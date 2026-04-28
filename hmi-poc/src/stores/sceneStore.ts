@@ -14,7 +14,9 @@ interface SceneState {
   frameloop: FrameLoop;
   robotRunning: boolean;
   conveyorSpeed: number;
-  setParam: <K extends keyof Omit<SceneState, 'setParam'>>(key: K, value: SceneState[K]) => void;
+  fps: number;
+  setParam: <K extends keyof Omit<SceneState, 'setParam' | 'setFps'>>(key: K, value: SceneState[K]) => void;
+  setFps: (fps: number) => void;
 }
 
 export const useSceneStore = create<SceneState>((set) => ({
@@ -26,5 +28,7 @@ export const useSceneStore = create<SceneState>((set) => ({
   frameloop: 'always',
   robotRunning: true,
   conveyorSpeed: 1.0,
+  fps: 0,
   setParam: (key, value) => set({ [key]: value } as Partial<SceneState>),
+  setFps: (fps) => set({ fps }),
 }));
