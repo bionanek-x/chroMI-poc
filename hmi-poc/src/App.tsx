@@ -2,6 +2,7 @@ import { useSceneStore } from './stores/sceneStore';
 import { PalletScene } from './scene/PalletScene';
 import { HUD } from './components/HUD';
 import { KeyboardOverlay } from './components/KeyboardOverlay';
+import { SceneRenderTime } from './components/SceneRenderTime';
 
 export default function App() {
   const stacks = useSceneStore((s) => s.stacks);
@@ -15,6 +16,7 @@ export default function App() {
         {!remounting && stacks.map((stack) => (
           <div key={`${stack.id}-${mountGeneration}`} style={{ flex: 1, position: 'relative', minWidth: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
             <PalletScene sceneId={stack.id} />
+            <SceneRenderTime sceneId={stack.id} />
             <button
               onClick={() => removeStack(stack.id)}
               title="Remove this stack"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TouchInput } from './TouchInput';
 import {
   exportTelemetryCsv,
@@ -7,6 +7,7 @@ import {
   stopRecording,
 } from '../hooks/useTelemetry';
 import { useSceneStore } from '../stores/sceneStore';
+import { FpsIndicator } from './FpsOverlay';
 
 function downloadCsv() {
   const csv = exportTelemetryCsv();
@@ -35,6 +36,7 @@ export function HUD() {
   const [recState, setRecState] = useState<'idle' | 'recording' | 'stopped'>('idle');
   const [elapsedSec, setElapsedSec] = useState(0);
   const [rowCount, setRowCount] = useState(0);
+  const startTimeRef = useRef<number>(0);
 
   const handleRender = useCallback(() => {
     const n = parseInt(layerInput, 10);
@@ -48,19 +50,20 @@ export function HUD() {
       setRowCount(getTelemetryRowCount());
     } else {
       startRecording();
+      startTimeRef.current = Date.now();
       setElapsedSec(0);
       setRowCount(0);
       setRecState('recording');
     }
   }, [recState]);
 
-  // Tick elapsed time while recording
+  // Tick elapsed time while recording — derived from wall-clock, not tick count
   useEffect(() => {
     if (recState !== 'recording') return;
     const id = setInterval(() => {
-      setElapsedSec((s) => s + 1);
+      setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000));
       setRowCount(getTelemetryRowCount());
-    }, 1000);
+    }, 250);
     return () => clearInterval(id);
   }, [recState]);
 
@@ -83,6 +86,8 @@ export function HUD() {
       gap: 24,
       flexShrink: 0,
     }}>
+      <FpsIndicator />
+
       {/* Layer count control */}
       <TouchInput
         label="Layers"
