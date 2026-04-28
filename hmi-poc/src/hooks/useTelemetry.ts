@@ -69,9 +69,6 @@ export function sampleTelemetry() {
     jsHeapMb().toFixed(1),
     scene.stacks.length,
     scene.palletLayers,
-    scene.postFX,
-    scene.shadowMapSize,
-    scene.pixelRatio.toFixed(1),
   ].join(',');
 
   buffer.push(row);
@@ -105,12 +102,9 @@ export function exportTelemetryCsv(): string {
     `#   js_heap_mb  — JS heap used in MB via performance.memory (Chrome/kiosk only; 0 elsewhere)`,
     `#   stacks      — Number of pallet stacks currently rendered`,
     `#   layers      — Number of pallet layers per stack`,
-    `#   postFX      — Post-processing effects enabled (true/false)`,
-    `#   shadowMap   — Shadow map resolution in px (e.g. 1024, 2048)`,
-    `#   pixelRatio  — Renderer device pixel ratio`,
   ].join('\n');
 
-  const header = 'timestamp,elapsed_s,fps,fps_band,render_ms,render_band,gpu_mem_mb,js_heap_mb,stacks,layers,postFX,shadowMap,pixelRatio';
+  const header = 'timestamp,elapsed_s,fps,fps_band,render_ms,render_band,gpu_mem_mb,js_heap_mb,stacks,layers';
 
   return meta + '\n' + header + '\n' + buffer.join('\n');
 }

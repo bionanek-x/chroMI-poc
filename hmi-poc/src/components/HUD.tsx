@@ -6,8 +6,10 @@ import {
   startRecording,
   stopRecording,
 } from '../hooks/useTelemetry';
+import { startShot, type ShotResult } from '../hooks/useShotBenchmark';
 import { useSceneStore } from '../stores/sceneStore';
 import { FpsIndicator } from './FpsOverlay';
+import { ShotReport } from './ShotReport';
 
 function downloadCsv() {
   const csv = exportTelemetryCsv();
@@ -31,12 +33,16 @@ export function HUD() {
   const setParam = useSceneStore((s) => s.setParam);
   const addStack = useSceneStore((s) => s.addStack);
   const remountAll = useSceneStore((s) => s.remountAll);
+  const stacks = useSceneStore((s) => s.stacks);
 
   const [layerInput, setLayerInput] = useState(String(palletLayers));
   const [recState, setRecState] = useState<'idle' | 'recording' | 'stopped'>('idle');
   const [elapsedSec, setElapsedSec] = useState(0);
   const [rowCount, setRowCount] = useState(0);
   const startTimeRef = useRef<number>(0);
+
+  const [shotPhase, setShotPhase] = useState<'idle' | 'capturing'>('idle');
+  const [shotResult, setShotResult] = useState<ShotResult | null>(null);
 
   const handleRender = useCallback(() => {
     const n = parseInt(layerInput, 10);
@@ -56,6 +62,17 @@ export function HUD() {
       setRecState('recording');
     }
   }, [recState]);
+
+  const handleTakeShot = useCallback(() => {
+    if (shotPhase === 'capturing') return;
+    setShotResult(null);
+    setShotPhase('capturing');
+    startShot(stacks.map((s) => s.id), (result) => {
+      setShotResult(result);
+      setShotPhase('idle');
+    });
+    remountAll();
+  }, [shotPhase, stacks, remountAll]);
 
   // Tick elapsed time while recording — derived from wall-clock, not tick count
   useEffect(() => {
@@ -140,6 +157,31 @@ export function HUD() {
         ↺ Remount all
       </button>
 
+      <button
+        onClick={handleTakeShot}
+        disabled={shotPhase === 'capturing'}
+        title="Remount all stacks and benchmark mount time, FPS, and memory"
+        style={{
+          minHeight: 48, minWidth: 130, borderRadius: 8,
+          border: `1px solid ${shotPhase === 'capturing' ? 'rgba(167,139,250,0.5)' : 'rgba(167,139,250,0.3)'}`,
+          background: shotPhase === 'capturing' ? 'rgba(167,139,250,0.15)' : 'rgba(167,139,250,0.07)',
+          color: '#a78bfa',
+          fontFamily: 'system-ui, sans-serif', fontSize: 15, fontWeight: 500,
+          cursor: shotPhase === 'capturing' ? 'default' : 'pointer', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          opacity: shotPhase === 'capturing' ? 0.7 : 1,
+        }}
+      >
+        {shotPhase === 'capturing' && (
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: '#a78bfa', flexShrink: 0,
+            animation: 'hmi-blink 1s step-start infinite',
+          }} />
+        )}
+        {shotPhase === 'capturing' ? 'Measuring…' : '◉ Take shot'}
+      </button>
+
       {/* Recording controls */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
@@ -189,6 +231,10 @@ export function HUD() {
           50% { opacity: 0; }
         }
       `}</style>
+
+      {shotResult && (
+        <ShotReport result={shotResult} onClose={() => setShotResult(null)} />
+      )}
     </div>
   );
 }

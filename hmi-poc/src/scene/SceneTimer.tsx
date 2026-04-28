@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useSceneStore } from '../stores/sceneStore';
 import { reportSceneTiming, reportStableSceneTiming, removeSceneTiming } from '../stores/renderTimingStore';
+import { notifyStackMounted } from '../hooks/useShotBenchmark';
 
 // How many frames to sample when measuring after a scene change.
 // We take the peak because the first couple of frames after a geometry
@@ -39,6 +40,7 @@ export function SceneTimer({ sceneId }: Props) {
       measureCountdown.current--;
       if (measureCountdown.current === 0) {
         reportStableSceneTiming(sceneId, peakMs.current);
+        notifyStackMounted(sceneId, peakMs.current);
       }
     }
   });
