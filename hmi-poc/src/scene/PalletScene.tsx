@@ -1,20 +1,29 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
+import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { DEMO_LAYOUT } from './pallet/demoLayout';
+import { generateLayout } from './pallet/demoLayout';
 import { PalletMesh } from './pallet/PalletMesh';
 import { BoxMesh } from './pallet/BoxMesh';
 import { SlipsheetMesh } from './pallet/SlipsheetMesh';
-import { HUD } from '../components/HUD';
-import { KeyboardOverlay } from '../components/KeyboardOverlay';
+import { useSceneStore } from '../stores/sceneStore';
+import { TelemetrySampler } from './TelemetrySampler';
+import { SceneTimer } from './SceneTimer';
 
 const FOV = 35;
 
 function PalletSceneContent() {
   const controlsRef = useRef<any>(null);
   const initialized = useRef(false);
+  const palletLayers = useSceneStore((s) => s.palletLayers);
+  const stackCount = useSceneStore((s) => s.stacks.length);
 
-  const { boxes, slipsheets, palletLength, palletWidth, slipsheetThickness } = DEMO_LAYOUT;
+  const layout = useMemo(() => generateLayout(palletLayers), [palletLayers]);
+  const { boxes, slipsheets, palletLength, palletWidth, slipsheetThickness } = layout;
+
+  useEffect(() => {
+    initialized.current = false;
+  }, [palletLayers, stackCount]);
 
   const center = useMemo<[number, number, number]>(() => {
     const maxY = boxes.reduce((m, b) => Math.max(m, b.centerY + b.sizeY / 2), 0);
@@ -30,7 +39,9 @@ function PalletSceneContent() {
     const radius = Math.sqrt(
       (palletLength / 2) ** 2 + (maxY / 2) ** 2 + (palletWidth / 2) ** 2,
     );
-    const distance = radius / Math.sin(((FOV / 2) * Math.PI) / 180);
+    const vHalfFov = (FOV / 2) * (Math.PI / 180);
+    const hHalfFov = Math.atan(Math.tan(vHalfFov) * (camera as THREE.PerspectiveCamera).aspect);
+    const distance = radius / Math.sin(Math.min(vHalfFov, hHalfFov));
     const az = Math.PI / 4;
     const el = (36 * Math.PI) / 180;
 
@@ -78,17 +89,19 @@ function PalletSceneContent() {
   );
 }
 
-export function PalletScene() {
+interface PalletSceneProps {
+  sceneId: string;
+}
+
+export function PalletScene({ sceneId }: PalletSceneProps) {
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <Canvas
-        camera={{ fov: FOV, near: 1, far: 50000 }}
-        style={{ background: '#1a1a2e' }}
-      >
-        <PalletSceneContent />
-      </Canvas>
-      <HUD />
-      <KeyboardOverlay />
-    </div>
+    <Canvas
+      camera={{ fov: FOV, near: 1, far: 50000 }}
+      style={{ background: '#1a1a2e', width: '100%', height: '100%', display: 'block' }}
+    >
+      <PalletSceneContent />
+      <SceneTimer sceneId={sceneId} />
+      <TelemetrySampler />
+    </Canvas>
   );
 }

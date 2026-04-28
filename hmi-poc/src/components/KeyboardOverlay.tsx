@@ -24,14 +24,10 @@ export function KeyboardOverlay() {
 
   return (
     <div style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      zIndex: 9999,
       background: '#1a1a2e',
       borderTop: '1px solid #333',
       padding: '8px 12px 12px',
+      flexShrink: 0,
     }}>
       {layout === 'numeric' ? (
         <Keyboard
