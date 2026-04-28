@@ -23,7 +23,7 @@ export function TouchInput({ value, onChange, layout = 'default', placeholder, l
         readOnly
         value={value}
         placeholder={placeholder}
-        onFocus={() => open({ layout, initial: value, onCommit: onChange })}
+        onClick={() => open({ layout, initial: value, onCommit: onChange })}
         style={{
           minHeight: 48,
           fontSize: 18,
