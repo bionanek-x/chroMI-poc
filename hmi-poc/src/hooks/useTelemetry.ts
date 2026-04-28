@@ -1,5 +1,6 @@
 import { getPerf } from 'r3f-perf';
 import { useSceneStore } from '../stores/sceneStore';
+import { getAggregatedFps, getWorstCaseFrameTime } from '../stores/renderTimingStore';
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 const THRESHOLDS = {
@@ -49,12 +50,14 @@ export function sampleTelemetry() {
   if (now - lastSampleMs < 800) return;
   lastSampleMs = now;
 
-  const state = getPerf();
-  const log = state?.log;
-  if (!log) return;
+  // FPS and frame time come from renderTimingStore, which maintains per-canvas values.
+  // fps = min across all active canvases (worst-case), render_ms = max (most expensive).
+  // This avoids the r3f-perf global singleton problem where only the last canvas to
+  // update wins, making multi-canvas sessions report single-canvas data.
+  const fps = getAggregatedFps();
+  if (fps === null) return; // no canvas has reported yet
 
-  const fps = log.fps ?? 0;
-  const renderMs = log.duration ?? 0;
+  const renderMs = getWorstCaseFrameTime();
   const elapsed = ((Date.now() - recordingStartMs) / 1000).toFixed(1);
   const scene = useSceneStore.getState();
 
@@ -65,7 +68,7 @@ export function sampleTelemetry() {
     fpsBand(fps),
     renderMs.toFixed(2),
     renderBand(renderMs),
-    (log.gpu ?? 0).toFixed(2),
+    (getPerf()?.log?.gpu ?? 0).toFixed(2),
     jsHeapMb().toFixed(1),
     scene.stacks.length,
     scene.palletLayers,
@@ -94,9 +97,9 @@ export function exportTelemetryCsv(): string {
     `# Columns:`,
     `#   timestamp   — Unix epoch ms when the sample was captured`,
     `#   elapsed_s   — Seconds elapsed since recording started`,
-    `#   fps         — Frames per second reported by r3f-perf`,
+    `#   fps         — Min FPS across all active canvases (worst-case canvas; rolling 30-frame average per canvas)`,
     `#   fps_band    — Quality band for fps: GOOD(>=${THRESHOLDS.fps.good}) / WARN(>=${THRESHOLDS.fps.warn}) / CRIT(<${THRESHOLDS.fps.warn})`,
-    `#   render_ms   — Three.js scene render call duration in ms (r3f-perf log.duration)`,
+    `#   render_ms   — Max inter-frame time across all active canvases (ms); worst-case canvas frame budget`,
     `#   render_band — Quality band for render_ms: GOOD(<=${THRESHOLDS.renderMs.good}ms) / WARN(<=${THRESHOLDS.renderMs.warn}ms) / CRIT(>${THRESHOLDS.renderMs.warn}ms)`,
     `#   gpu_mem_mb  — GPU memory usage in MB from r3f-perf (not GPU utilisation %)`,
     `#   js_heap_mb  — JS heap used in MB via performance.memory (Chrome/kiosk only; 0 elsewhere)`,

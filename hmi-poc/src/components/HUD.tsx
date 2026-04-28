@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { TouchInput } from './TouchInput';
 import {
   exportTelemetryCsv,
@@ -42,7 +43,8 @@ export function HUD() {
   const startTimeRef = useRef<number>(0);
 
   const [shotPhase, setShotPhase] = useState<'idle' | 'capturing'>('idle');
-  const [shotResult, setShotResult] = useState<ShotResult | null>(null);
+  const [lastShotResult, setLastShotResult] = useState<ShotResult | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   const handleRender = useCallback(() => {
     const n = parseInt(layerInput, 10);
@@ -65,10 +67,10 @@ export function HUD() {
 
   const handleTakeShot = useCallback(() => {
     if (shotPhase === 'capturing') return;
-    setShotResult(null);
     setShotPhase('capturing');
     startShot(stacks.map((s) => s.id), (result) => {
-      setShotResult(result);
+      setLastShotResult(result);
+      setShowReport(true);
       setShotPhase('idle');
     });
     remountAll();
@@ -182,6 +184,23 @@ export function HUD() {
         {shotPhase === 'capturing' ? 'Measuring…' : '◉ Take shot'}
       </button>
 
+      {lastShotResult && (
+        <button
+          onClick={() => setShowReport(true)}
+          title="Reopen last benchmark results"
+          style={{
+            minHeight: 48, minWidth: 48, borderRadius: 8,
+            border: '1px solid rgba(167,139,250,0.3)',
+            background: 'rgba(167,139,250,0.07)',
+            color: '#a78bfa',
+            fontFamily: 'system-ui, sans-serif', fontSize: 14, fontWeight: 500,
+            cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          Last benchmark
+        </button>
+      )}
+
       {/* Recording controls */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
@@ -232,8 +251,9 @@ export function HUD() {
         }
       `}</style>
 
-      {shotResult && (
-        <ShotReport result={shotResult} onClose={() => setShotResult(null)} />
+      {showReport && lastShotResult && createPortal(
+        <ShotReport result={lastShotResult} onClose={() => setShowReport(false)} />,
+        document.body,
       )}
     </div>
   );

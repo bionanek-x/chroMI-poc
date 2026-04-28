@@ -1,6 +1,6 @@
-import { getPerf } from 'r3f-perf';
 import { useSceneStore } from '../stores/sceneStore';
 import { generateLayout } from '../scene/pallet/demoLayout';
+import { getAggregatedFps } from '../stores/renderTimingStore';
 
 function jsHeapMb(): number {
   const mem = (performance as { memory?: { usedJSHeapSize: number } }).memory;
@@ -62,8 +62,7 @@ function _finalize() {
     fpsIntervalId = null;
   }
 
-  const perf = getPerf();
-  const finalFps = perf?.log?.fps ?? 0;
+  const finalFps = getAggregatedFps() ?? 0;
   const finalHeapMb = jsHeapMb();
   const avgFpsDuring =
     fpsSamples.length > 0
@@ -96,8 +95,7 @@ function _finalize() {
 }
 
 export function startShot(stackIds: string[], callback: (r: ShotResult) => void) {
-  const perf = getPerf();
-  baselineFps = perf?.log?.fps ?? 0;
+  baselineFps = getAggregatedFps() ?? 0;
   baselineHeapMb = jsHeapMb();
 
   shotStartMs = Date.now();
@@ -115,7 +113,7 @@ export function startShot(stackIds: string[], callback: (r: ShotResult) => void)
 
   fpsIntervalId = setInterval(() => {
     if (phase !== 'capturing') return;
-    const p = getPerf();
-    if (p?.log?.fps != null) fpsSamples.push(p.log.fps);
+    const fps = getAggregatedFps();
+    if (fps !== null) fpsSamples.push(fps);
   }, 100);
 }

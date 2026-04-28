@@ -4,10 +4,11 @@ import { useSceneStore } from '../stores/sceneStore';
 import { reportSceneTiming, reportStableSceneTiming, removeSceneTiming } from '../stores/renderTimingStore';
 import { notifyStackMounted } from '../hooks/useShotBenchmark';
 
-// How many frames to sample when measuring after a scene change.
-// We take the peak because the first couple of frames after a geometry
-// rebuild are the most expensive ones.
-const MEASURE_FRAMES = 5;
+// Frames sampled per measurement window. 60 frames ≈ 1 s at 60 fps — long enough
+// for shader compilation and GPU buffer uploads to settle into steady state.
+const MEASURE_FRAMES = 60;
+// Rolling window for per-canvas FPS smoothing (≈ 0.5 s at 60 fps).
+const FPS_BUFFER_SIZE = 30;
 
 interface Props {
   sceneId: string;
@@ -18,6 +19,7 @@ export function SceneTimer({ sceneId }: Props) {
   const prevLayers = useRef<number | null>(null);
   const measureCountdown = useRef(MEASURE_FRAMES); // start measuring immediately on mount
   const peakMs = useRef(0);
+  const fpsBuffer = useRef<number[]>([]);
 
   // Re-trigger measurement whenever layers change
   useEffect(() => {
@@ -31,8 +33,15 @@ export function SceneTimer({ sceneId }: Props) {
   useFrame((_, delta) => {
     const ms = delta * 1000;
 
-    // Always report live frame time for CSV sampling
-    reportSceneTiming(sceneId, ms);
+    // Per-canvas rolling FPS — keeps each canvas's reading independent of the
+    // r3f-perf global singleton, which only reflects the last canvas to update.
+    if (delta > 0) fpsBuffer.current.push(1 / delta);
+    if (fpsBuffer.current.length > FPS_BUFFER_SIZE) fpsBuffer.current.shift();
+    const fps = fpsBuffer.current.length > 0
+      ? fpsBuffer.current.reduce((a, b) => a + b, 0) / fpsBuffer.current.length
+      : 0;
+
+    reportSceneTiming(sceneId, ms, fps);
 
     // Accumulate peak during measurement window
     if (measureCountdown.current > 0) {
