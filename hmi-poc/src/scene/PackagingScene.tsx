@@ -10,6 +10,7 @@ import { ProductInstances } from './ProductInstances';
 import { RobotArm } from './RobotArm';
 import { PackingBox } from './PackingBox';
 import { PostFX } from './PostFX';
+import { TelemetrySampler } from './TelemetrySampler';
 import { HUD } from '../components/HUD';
 import { KeyboardOverlay } from '../components/KeyboardOverlay';
 
@@ -109,6 +110,7 @@ export function PackagingScene() {
         style={{ background: '#0a0a0f' }}
       >
         {isPerfOverlay && <Perf position="top-right" deepAnalyze matrixUpdate showGraph />}
+        <TelemetrySampler />
         <FpsTracker />
         {isDebug && <DebugControls />}
 
