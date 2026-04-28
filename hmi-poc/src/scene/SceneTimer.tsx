@@ -4,9 +4,10 @@ import { useSceneStore } from '../stores/sceneStore';
 import { reportSceneTiming, reportStableSceneTiming, removeSceneTiming } from '../stores/renderTimingStore';
 import { notifyStackMounted } from '../hooks/useShotBenchmark';
 
-// Frames sampled per measurement window. 60 frames ≈ 1 s at 60 fps — long enough
-// for shader compilation and GPU buffer uploads to settle into steady state.
-const MEASURE_FRAMES = 60;
+// Frames to wait before considering the scene settled. 3 frames is enough to
+// capture initial shader compilation and GPU buffer uploads without inflating
+// the measurement by competing canvases reducing per-canvas frame rate.
+const MEASURE_FRAMES = 3;
 // Rolling window for per-canvas FPS smoothing (≈ 0.5 s at 60 fps).
 const FPS_BUFFER_SIZE = 30;
 
@@ -19,6 +20,9 @@ export function SceneTimer({ sceneId }: Props) {
   const prevLayers = useRef<number | null>(null);
   const measureCountdown = useRef(MEASURE_FRAMES); // start measuring immediately on mount
   const peakMs = useRef(0);
+  // Capture start time at mount/remount, not inside useFrame, so competing
+  // canvases don't inflate the reading by delaying the first frame callback.
+  const mountStartMs = useRef(performance.now());
   const fpsBuffer = useRef<number[]>([]);
 
   // Re-trigger measurement whenever layers change
@@ -26,6 +30,7 @@ export function SceneTimer({ sceneId }: Props) {
     if (prevLayers.current !== null && prevLayers.current !== palletLayers) {
       measureCountdown.current = MEASURE_FRAMES;
       peakMs.current = 0;
+      mountStartMs.current = performance.now();
     }
     prevLayers.current = palletLayers;
   }, [palletLayers]);
@@ -43,12 +48,14 @@ export function SceneTimer({ sceneId }: Props) {
 
     reportSceneTiming(sceneId, ms, fps);
 
-    // Accumulate peak during measurement window
+    // Accumulate peak during measurement window and record total wall-clock time
+    // from mount/remount trigger to settled state.
     if (measureCountdown.current > 0) {
       peakMs.current = Math.max(peakMs.current, ms);
       measureCountdown.current--;
       if (measureCountdown.current === 0) {
-        reportStableSceneTiming(sceneId, peakMs.current);
+        const totalMountMs = performance.now() - mountStartMs.current;
+        reportStableSceneTiming(sceneId, totalMountMs);
         notifyStackMounted(sceneId, peakMs.current);
       }
     }

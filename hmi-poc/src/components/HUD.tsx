@@ -11,6 +11,7 @@ import { startShot, type ShotResult } from '../hooks/useShotBenchmark';
 import { useSceneStore } from '../stores/sceneStore';
 import { FpsIndicator } from './FpsOverlay';
 import { ShotReport } from './ShotReport';
+import { HelpModal } from './HelpModal';
 
 function downloadCsv() {
   const csv = exportTelemetryCsv();
@@ -45,6 +46,7 @@ export function HUD() {
   const [shotPhase, setShotPhase] = useState<'idle' | 'capturing'>('idle');
   const [lastShotResult, setLastShotResult] = useState<ShotResult | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleRender = useCallback(() => {
     const n = parseInt(layerInput, 10);
@@ -201,7 +203,7 @@ export function HUD() {
         </button>
       )}
 
-      {/* Recording controls */}
+      {/* Recording controls + help */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           onClick={handleRecStop}
@@ -242,6 +244,20 @@ export function HUD() {
             ↓ CSV ({rowCount})
           </button>
         )}
+        <button
+          onClick={() => setShowHelp(true)}
+          title="How to use this tool"
+          style={{
+            minHeight: 48, width: 48, borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.04)',
+            color: '#6b7280',
+            fontFamily: 'system-ui, sans-serif', fontSize: 18, fontWeight: 600,
+            cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          ?
+        </button>
       </div>
 
       <style>{`
@@ -253,6 +269,10 @@ export function HUD() {
 
       {showReport && lastShotResult && createPortal(
         <ShotReport result={lastShotResult} onClose={() => setShowReport(false)} />,
+        document.body,
+      )}
+      {showHelp && createPortal(
+        <HelpModal onClose={() => setShowHelp(false)} />,
         document.body,
       )}
     </div>

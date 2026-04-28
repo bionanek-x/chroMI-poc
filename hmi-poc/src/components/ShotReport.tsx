@@ -7,7 +7,6 @@ interface Props {
 }
 
 function fmt1(n: number) { return n.toFixed(1); }
-function fmt0(n: number) { return Math.round(n).toString(); }
 function fmtMs(n: number) { return n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(2)} s`; }
 function fmtSign(n: number) { return (n >= 0 ? '+' : '') + fmt1(n); }
 
