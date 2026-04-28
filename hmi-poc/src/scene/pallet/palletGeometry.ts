@@ -1,0 +1,5 @@
+export const DECK_THICKNESS = 18;
+export const STRINGER_HEIGHT = 90;
+export const SLAT_COUNT = 7;
+export const STRINGER_COUNT = 3;
+export const PALLET_STRUCTURE_HEIGHT = 126; // DECK_THICKNESS + STRINGER_HEIGHT + DECK_THICKNESS

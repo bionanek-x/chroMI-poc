@@ -1,5 +1,5 @@
-import { PackagingScene } from './scene/PackagingScene';
+import { PalletScene } from './scene/PalletScene';
 
 export default function App() {
-  return <PackagingScene />;
+  return <PalletScene />;
 }

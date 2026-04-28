@@ -4,7 +4,6 @@ export type PostFXMode = 'none' | 'bloom' | 'bloom+ssao';
 export type MaterialQuality = 'basic' | 'standard' | 'physical';
 export type FrameLoop = 'always' | 'demand';
 export type ShadowMapSize = 0 | 512 | 1024 | 2048;
-
 interface SceneState {
   productCount: number;
   shadowMapSize: ShadowMapSize;
