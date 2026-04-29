@@ -7,7 +7,8 @@ interface KeyboardState {
   layout: Layout;
   value: string;
   onCommit: ((v: string) => void) | null;
-  open: (opts: { layout?: Layout; initial?: string; onCommit: (v: string) => void }) => void;
+  onLiveChange: ((v: string) => void) | null;
+  open: (opts: { layout?: Layout; initial?: string; onCommit: (v: string) => void; onLiveChange?: (v: string) => void }) => void;
   close: () => void;
   setValue: (v: string) => void;
 }
@@ -17,8 +18,9 @@ export const useKeyboardStore = create<KeyboardState>((set) => ({
   layout: 'default',
   value: '',
   onCommit: null,
-  open: ({ layout = 'default', initial = '', onCommit }) =>
-    set({ visible: true, layout, value: initial, onCommit }),
-  close: () => set({ visible: false, onCommit: null }),
+  onLiveChange: null,
+  open: ({ layout = 'default', initial = '', onCommit, onLiveChange = null }) =>
+    set({ visible: true, layout, value: initial, onCommit, onLiveChange }),
+  close: () => set({ visible: false, onCommit: null, onLiveChange: null }),
   setValue: (value) => set({ value }),
 }));

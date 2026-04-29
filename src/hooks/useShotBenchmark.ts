@@ -26,8 +26,14 @@ export interface ShotResult {
   finalHeapMb: number;
   heapDeltaMb: number;
   totalMountMs: number; // time from shot start to last stack stable
+  settleMs: number;     // delay waited after last stack mounted before sampling finalFps
   stackMounts: StackMountRecord[];
 }
+
+// How long to wait after the last stack mounts before sampling finalFps.
+// Gives the renderer time to reach steady-state rather than capturing a
+// still-climbing value right at the end of a heavy paint burst.
+const SETTLE_MS = 2000;
 
 // ── Module-level capture state ────────────────────────────────────────────────
 let phase: 'idle' | 'capturing' = 'idle';
@@ -62,8 +68,8 @@ function _finalize() {
     fpsIntervalId = null;
   }
 
-  const finalFps = getAggregatedFps() ?? 0;
-  const finalHeapMb = jsHeapMb();
+  // Snapshot everything that's known now (at last-stack-mounted time).
+  const totalMountMs = Date.now() - shotStartMs;
   const avgFpsDuring =
     fpsSamples.length > 0
       ? fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length
@@ -77,7 +83,7 @@ function _finalize() {
     .map(([sceneId, r]) => ({ sceneId, ...r }))
     .sort((a, b) => a.mountMs - b.mountMs);
 
-  onComplete?.({
+  const partial = {
     capturedAt: new Date().toISOString(),
     stackCount: scene.stacks.length,
     palletLayers: scene.palletLayers,
@@ -86,12 +92,22 @@ function _finalize() {
     baselineFps,
     baselineHeapMb,
     avgFpsDuring,
-    finalFps,
-    finalHeapMb,
-    heapDeltaMb: finalHeapMb - baselineHeapMb,
-    totalMountMs: Date.now() - shotStartMs,
+    totalMountMs,
+    settleMs: SETTLE_MS,
     stackMounts,
-  });
+  };
+
+  // Wait for the renderer to reach steady-state before sampling finalFps.
+  setTimeout(() => {
+    const finalFps = getAggregatedFps() ?? 0;
+    const finalHeapMb = jsHeapMb();
+    onComplete?.({
+      ...partial,
+      finalFps,
+      finalHeapMb,
+      heapDeltaMb: finalHeapMb - baselineHeapMb,
+    });
+  }, SETTLE_MS);
 }
 
 export function startShot(stackIds: string[], callback: (r: ShotResult) => void) {

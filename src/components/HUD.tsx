@@ -43,7 +43,7 @@ export function HUD() {
   const [rowCount, setRowCount] = useState(0);
   const startTimeRef = useRef<number>(0);
 
-  const [shotPhase, setShotPhase] = useState<'idle' | 'capturing'>('idle');
+  const [shotPhase, setShotPhase] = useState<'idle' | 'settling' | 'capturing'>('idle');
   const [lastShotResult, setLastShotResult] = useState<ShotResult | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -67,15 +67,20 @@ export function HUD() {
     }
   }, [recState]);
 
+  const BEFORE_SETTLE_MS = 2000;
+
   const handleTakeShot = useCallback(() => {
-    if (shotPhase === 'capturing') return;
-    setShotPhase('capturing');
-    startShot(stacks.map((s) => s.id), (result) => {
-      setLastShotResult(result);
-      setShowReport(true);
-      setShotPhase('idle');
-    });
-    remountAll();
+    if (shotPhase !== 'idle') return;
+    setShotPhase('settling');
+    setTimeout(() => {
+      setShotPhase('capturing');
+      startShot(stacks.map((s) => s.id), (result) => {
+        setLastShotResult(result);
+        setShowReport(true);
+        setShotPhase('idle');
+      });
+      remountAll();
+    }, BEFORE_SETTLE_MS);
   }, [shotPhase, stacks, remountAll]);
 
   // Tick elapsed time while recording — derived from wall-clock, not tick count
@@ -87,6 +92,8 @@ export function HUD() {
     }, 250);
     return () => clearInterval(id);
   }, [recState]);
+
+  const busy = shotPhase !== 'idle';
 
   const recLabel = recState === 'recording'
     ? `■ Stop  ${formatElapsed(elapsedSec)}`
@@ -120,13 +127,15 @@ export function HUD() {
       />
       <button
         onClick={handleRender}
+        disabled={busy}
         style={{
           minHeight: 48, minWidth: 100, borderRadius: 8,
           border: '1px solid rgba(99,202,183,0.4)',
           background: 'rgba(99,202,183,0.12)',
           color: '#63cab7',
           fontFamily: 'system-ui, sans-serif', fontSize: 15, fontWeight: 600,
-          cursor: 'pointer', letterSpacing: '0.03em', flexShrink: 0,
+          cursor: busy ? 'not-allowed' : 'pointer', letterSpacing: '0.03em', flexShrink: 0,
+          opacity: busy ? 0.4 : 1,
         }}
       >
         Render!
@@ -134,13 +143,15 @@ export function HUD() {
 
       <button
         onClick={addStack}
+        disabled={busy}
         style={{
           minHeight: 48, minWidth: 110, borderRadius: 8,
           border: '1px solid rgba(255,255,255,0.15)',
           background: 'rgba(255,255,255,0.06)',
           color: '#e5e7eb',
           fontFamily: 'system-ui, sans-serif', fontSize: 15, fontWeight: 500,
-          cursor: 'pointer', flexShrink: 0,
+          cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
+          opacity: busy ? 0.4 : 1,
         }}
       >
         + Add stack
@@ -148,6 +159,7 @@ export function HUD() {
 
       <button
         onClick={remountAll}
+        disabled={busy}
         title="Destroy and re-mount all stacks"
         style={{
           minHeight: 48, minWidth: 110, borderRadius: 8,
@@ -155,7 +167,8 @@ export function HUD() {
           background: 'rgba(251,191,36,0.07)',
           color: '#fbbf24',
           fontFamily: 'system-ui, sans-serif', fontSize: 15, fontWeight: 500,
-          cursor: 'pointer', flexShrink: 0,
+          cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
+          opacity: busy ? 0.4 : 1,
         }}
       >
         ↺ Remount all
@@ -163,32 +176,33 @@ export function HUD() {
 
       <button
         onClick={handleTakeShot}
-        disabled={shotPhase === 'capturing'}
+        disabled={busy}
         title="Remount all stacks and benchmark mount time, FPS, and memory"
         style={{
           minHeight: 48, minWidth: 130, borderRadius: 8,
-          border: `1px solid ${shotPhase === 'capturing' ? 'rgba(167,139,250,0.5)' : 'rgba(167,139,250,0.3)'}`,
-          background: shotPhase === 'capturing' ? 'rgba(167,139,250,0.15)' : 'rgba(167,139,250,0.07)',
+          border: `1px solid ${busy ? 'rgba(167,139,250,0.5)' : 'rgba(167,139,250,0.3)'}`,
+          background: busy ? 'rgba(167,139,250,0.15)' : 'rgba(167,139,250,0.07)',
           color: '#a78bfa',
           fontFamily: 'system-ui, sans-serif', fontSize: 15, fontWeight: 500,
-          cursor: shotPhase === 'capturing' ? 'default' : 'pointer', flexShrink: 0,
+          cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          opacity: shotPhase === 'capturing' ? 0.7 : 1,
+          opacity: busy ? 0.7 : 1,
         }}
       >
-        {shotPhase === 'capturing' && (
+        {busy && (
           <span style={{
             width: 8, height: 8, borderRadius: '50%',
             background: '#a78bfa', flexShrink: 0,
             animation: 'hmi-blink 1s step-start infinite',
           }} />
         )}
-        {shotPhase === 'capturing' ? 'Measuring…' : '◉ Take shot'}
+        {shotPhase === 'settling' ? 'Settling…' : shotPhase === 'capturing' ? 'Measuring…' : '◉ Take shot'}
       </button>
 
       {lastShotResult && (
         <button
           onClick={() => setShowReport(true)}
+          disabled={busy}
           title="Reopen last benchmark results"
           style={{
             minHeight: 48, minWidth: 48, borderRadius: 8,
@@ -196,7 +210,8 @@ export function HUD() {
             background: 'rgba(167,139,250,0.07)',
             color: '#a78bfa',
             fontFamily: 'system-ui, sans-serif', fontSize: 14, fontWeight: 500,
-            cursor: 'pointer', flexShrink: 0,
+            cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
+            opacity: busy ? 0.4 : 1,
           }}
         >
           Last benchmark
@@ -207,6 +222,7 @@ export function HUD() {
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           onClick={handleRecStop}
+          disabled={busy}
           title={recState === 'recording' ? 'Stop recording' : 'Start recording telemetry'}
           style={{
             minHeight: 48, minWidth: 140, borderRadius: 8,
@@ -214,8 +230,9 @@ export function HUD() {
             background: `${recColor}11`,
             color: recColor,
             fontFamily: 'system-ui, sans-serif', fontSize: 14, fontWeight: 600,
-            cursor: 'pointer', flexShrink: 0,
+            cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            opacity: busy ? 0.4 : 1,
           }}
         >
           {recState === 'recording' && (
@@ -231,6 +248,7 @@ export function HUD() {
         {recState !== 'idle' && rowCount > 0 && (
           <button
             onClick={downloadCsv}
+            disabled={busy}
             title={`Download CSV — ${rowCount} samples`}
             style={{
               minHeight: 48, minWidth: 110, borderRadius: 8,
@@ -238,7 +256,8 @@ export function HUD() {
               background: 'rgba(255,255,255,0.06)',
               color: '#e5e7eb',
               fontFamily: 'system-ui, sans-serif', fontSize: 13, fontWeight: 500,
-              cursor: 'pointer', flexShrink: 0,
+              cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
+              opacity: busy ? 0.4 : 1,
             }}
           >
             ↓ CSV ({rowCount})
@@ -249,9 +268,9 @@ export function HUD() {
           title="How to use this tool"
           style={{
             minHeight: 48, width: 48, borderRadius: 8,
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.04)',
-            color: '#6b7280',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.06)',
+            color: '#e5e7eb',
             fontFamily: 'system-ui, sans-serif', fontSize: 18, fontWeight: 600,
             cursor: 'pointer', flexShrink: 0,
           }}

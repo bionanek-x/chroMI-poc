@@ -33,6 +33,7 @@ function downloadCsv(result: ShotResult) {
     ['boxesPerStack', result.boxesPerStack],
     ['totalBoxes', result.totalBoxes],
     ['totalMountMs', result.totalMountMs],
+    ['settleMs', result.settleMs],
     ['baselineFps', result.baselineFps],
     ['avgFpsDuring', result.avgFpsDuring],
     ['finalFps', result.finalFps],
@@ -215,7 +216,7 @@ export function ShotReport({ result, onClose }: Props) {
           <Section title="FPS">
             <Row label="Before unmount (baseline)" value={`${fmt1(result.baselineFps)} fps`} valueColor={band(result.baselineFps)} />
             <Row label="Avg while mounting" value={`${fmt1(result.avgFpsDuring)} fps`} valueColor={band(result.avgFpsDuring)} />
-            <Row label="After all mounted" value={`${fmt1(result.finalFps)} fps`} valueColor={band(result.finalFps)} />
+            <Row label={`After all mounted (+${result.settleMs / 1000} s settle)`} value={`${fmt1(result.finalFps)} fps`} valueColor={band(result.finalFps)} />
           </Section>
 
           {/* Memory */}

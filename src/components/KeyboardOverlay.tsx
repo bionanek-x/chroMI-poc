@@ -13,7 +13,7 @@ const numericDisplay = {
 };
 
 export function KeyboardOverlay() {
-  const { visible, layout, value, setValue, close, onCommit } = useKeyboardStore();
+  const { visible, layout, value, setValue, close, onCommit, onLiveChange } = useKeyboardStore();
 
   if (!visible) return null;
 
@@ -34,7 +34,7 @@ export function KeyboardOverlay() {
           layoutName="default"
           layout={numericLayout}
           display={numericDisplay}
-          onChange={setValue}
+          onChange={(v) => { setValue(v); onLiveChange?.(v); }}
           inputName="keyboard"
           input={{ keyboard: value }}
           onKeyPress={(btn) => {
@@ -60,7 +60,7 @@ export function KeyboardOverlay() {
           </div>
           <Keyboard
             layoutName="default"
-            onChange={setValue}
+            onChange={(v) => { setValue(v); onLiveChange?.(v); }}
             inputName="keyboard"
             input={{ keyboard: value }}
           />
