@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "serve": "bash serve.sh",
     "kiosk:vm": "bash kiosk-vm.sh",
-    "kiosk:physical": "bash kiosk-physical.sh"
+    "kiosk:physical": "bash kiosk-physical.sh",
+    "kiosk:mac": "bash kiosk-mac.sh"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",
