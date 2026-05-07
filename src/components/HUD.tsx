@@ -7,7 +7,7 @@ import {
   startRecording,
   stopRecording,
 } from '../hooks/useTelemetry';
-import { startShot, type ShotResult } from '../hooks/useShotBenchmark';
+import { startShot, aggregateRuns, type ShotResult, type MultiShotResult } from '../hooks/useShotBenchmark';
 import { useSceneStore } from '../stores/sceneStore';
 import { FpsIndicator } from './FpsOverlay';
 import { ShotReport } from './ShotReport';
@@ -44,7 +44,8 @@ export function HUD() {
   const startTimeRef = useRef<number>(0);
 
   const [shotPhase, setShotPhase] = useState<'idle' | 'settling' | 'capturing'>('idle');
-  const [lastShotResult, setLastShotResult] = useState<ShotResult | null>(null);
+  const [shotProgress, setShotProgress] = useState({ done: 0, total: 0 });
+  const [lastShotResult, setLastShotResult] = useState<MultiShotResult | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -68,18 +69,34 @@ export function HUD() {
   }, [recState]);
 
   const BEFORE_SETTLE_MS = 2000;
+  const BETWEEN_RUNS_MS = 800;
+  const SHOT_RUNS = 3;
 
   const handleTakeShot = useCallback(() => {
     if (shotPhase !== 'idle') return;
     setShotPhase('settling');
-    setTimeout(() => {
-      setShotPhase('capturing');
-      startShot(stacks.map((s) => s.id), (result) => {
-        setLastShotResult(result);
-        setShowReport(true);
-        setShotPhase('idle');
+    setShotProgress({ done: 0, total: SHOT_RUNS });
+    const collected: ShotResult[] = [];
+    const stackIds = stacks.map((s) => s.id);
+
+    const runOne = () => {
+      startShot(stackIds, (result) => {
+        collected.push(result);
+        setShotProgress({ done: collected.length, total: SHOT_RUNS });
+        if (collected.length < SHOT_RUNS) {
+          setTimeout(runOne, BETWEEN_RUNS_MS);
+        } else {
+          setLastShotResult(aggregateRuns(collected));
+          setShowReport(true);
+          setShotPhase('idle');
+        }
       });
       remountAll();
+    };
+
+    setTimeout(() => {
+      setShotPhase('capturing');
+      runOne();
     }, BEFORE_SETTLE_MS);
   }, [shotPhase, stacks, remountAll]);
 
@@ -196,7 +213,11 @@ export function HUD() {
             animation: 'hmi-blink 1s step-start infinite',
           }} />
         )}
-        {shotPhase === 'settling' ? 'Settling…' : shotPhase === 'capturing' ? 'Measuring…' : '◉ Take shot'}
+        {shotPhase === 'settling'
+          ? 'Settling…'
+          : shotPhase === 'capturing'
+          ? `Measuring… (${shotProgress.done + 1}/${shotProgress.total})`
+          : '◉ Take shot'}
       </button>
 
       {lastShotResult && (

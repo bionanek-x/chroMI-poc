@@ -1,20 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
-import type { ShotResult } from '../hooks/useShotBenchmark';
+import type { AggregateStat, MultiShotResult, ShotResult } from '../hooks/useShotBenchmark';
 
 interface Props {
-  result: ShotResult;
+  result: MultiShotResult;
   onClose: () => void;
 }
 
 function fmt1(n: number) { return n.toFixed(1); }
+function fmt2(n: number) { return n.toFixed(2); }
 function fmtMs(n: number) { return n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(2)} s`; }
 function fmtSign(n: number) { return (n >= 0 ? '+' : '') + fmt1(n); }
 
-function band(fps: number) {
+function fpsBand(fps: number) {
   return fps >= 50 ? '#4ade80' : fps >= 30 ? '#fbbf24' : '#f87171';
 }
 
-function downloadJson(result: ShotResult) {
+function frameBand(ms: number) {
+  return ms <= 20 ? '#4ade80' : ms <= 33 ? '#fbbf24' : '#f87171';
+}
+
+function meanStddev(s: AggregateStat, fmt: (n: number) => string, suffix: string) {
+  return `${fmt(s.mean)}${suffix} ± ${fmt(s.stddev)}`;
+}
+
+function downloadJson(result: MultiShotResult) {
   const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -24,41 +33,50 @@ function downloadJson(result: ShotResult) {
   URL.revokeObjectURL(url);
 }
 
-function downloadCsv(result: ShotResult) {
+function downloadCsv(result: MultiShotResult) {
   const ts = Date.now();
-  const summaryRows = [
+  const a = result.aggregates;
+  const summaryRows: (string | number)[][] = [
     ['capturedAt', result.capturedAt],
+    ['runCount', result.runCount],
     ['stackCount', result.stackCount],
     ['palletLayers', result.palletLayers],
     ['boxesPerStack', result.boxesPerStack],
     ['totalBoxes', result.totalBoxes],
-    ['totalMountMs', result.totalMountMs],
-    ['settleMs', result.settleMs],
-    ['baselineFps', result.baselineFps],
-    ['avgFpsDuring', result.avgFpsDuring],
-    ['finalFps', result.finalFps],
-    ['baselineHeapMb', result.baselineHeapMb],
-    ['finalHeapMb', result.finalHeapMb],
-    ['heapDeltaMb', result.heapDeltaMb],
+    [],
+    ['metric', 'mean', 'stddev', 'min', 'max'],
+    ['baselineFps', a.baselineFps.mean, a.baselineFps.stddev, a.baselineFps.min, a.baselineFps.max],
+    ['avgFpsDuring', a.avgFpsDuring.mean, a.avgFpsDuring.stddev, a.avgFpsDuring.min, a.avgFpsDuring.max],
+    ['finalFps', a.finalFps.mean, a.finalFps.stddev, a.finalFps.min, a.finalFps.max],
+    ['totalMountMs', a.totalMountMs.mean, a.totalMountMs.stddev, a.totalMountMs.min, a.totalMountMs.max],
+    ['finalP50Ms', a.finalP50Ms.mean, a.finalP50Ms.stddev, a.finalP50Ms.min, a.finalP50Ms.max],
+    ['finalP95Ms', a.finalP95Ms.mean, a.finalP95Ms.stddev, a.finalP95Ms.min, a.finalP95Ms.max],
+    ['finalP99Ms', a.finalP99Ms.mean, a.finalP99Ms.stddev, a.finalP99Ms.min, a.finalP99Ms.max],
+    ['finalMaxMs', a.finalMaxMs.mean, a.finalMaxMs.stddev, a.finalMaxMs.min, a.finalMaxMs.max],
+    ['heapDeltaMb', a.heapDeltaMb.mean, a.heapDeltaMb.stddev, a.heapDeltaMb.min, a.heapDeltaMb.max],
   ];
 
-  const stackRows = [
-    ['sceneId', 'mountMs', 'peakFrameMs'],
-    ...result.stackMounts.map(m => [m.sceneId, m.mountMs, m.peakFrameMs]),
+  const runHeader = ['run', 'totalMountMs', 'baselineFps', 'avgFpsDuring', 'finalFps', 'finalP50Ms', 'finalP95Ms', 'finalP99Ms', 'finalMaxMs', 'heapDeltaMb'];
+  const runRows: (string | number)[][] = [
+    runHeader,
+    ...result.runs.map((r, i) => [
+      i + 1, r.totalMountMs, r.baselineFps, r.avgFpsDuring, r.finalFps,
+      r.finalP50Ms, r.finalP95Ms, r.finalP99Ms, r.finalMaxMs, r.heapDeltaMb,
+    ]),
   ];
 
   const csv =
-    'Summary\n' +
-    summaryRows.map(r => r.join(',')).join('\n') +
-    '\n\nPer-stack\n' +
-    stackRows.map(r => r.join(',')).join('\n');
+    'Aggregates\n' +
+    summaryRows.map((r) => r.join(',')).join('\n') +
+    '\n\nPer-run\n' +
+    runRows.map((r) => r.join(',')).join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `hmi_shot_${ts}.csv`;
-  a.click();
+  const a2 = document.createElement('a');
+  a2.href = url;
+  a2.download = `hmi_shot_${ts}.csv`;
+  a2.click();
   URL.revokeObjectURL(url);
 }
 
@@ -83,6 +101,41 @@ function Row({ label, value, valueColor }: { label: string; value: string; value
     <div style={ROW}>
       <span style={LABEL}>{label}</span>
       <span style={{ ...VAL, color: valueColor ?? '#e5e7eb' }}>{value}</span>
+    </div>
+  );
+}
+
+function PerRunTable({ runs }: { runs: ShotResult[] }) {
+  const HEADER: React.CSSProperties = { color: '#6b7280', fontSize: 11, fontWeight: 600 };
+  const CELL: React.CSSProperties = { color: '#e5e7eb', fontSize: 12, fontWeight: 500, fontVariantNumeric: 'tabular-nums' };
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)', borderRadius: 6, overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.07)',
+    }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr 1fr 1fr', padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)', gap: 8 }}>
+        <span style={HEADER}>#</span>
+        <span style={{ ...HEADER, textAlign: 'right' }}>Mount</span>
+        <span style={{ ...HEADER, textAlign: 'right' }}>Final FPS</span>
+        <span style={{ ...HEADER, textAlign: 'right' }}>p95</span>
+        <span style={{ ...HEADER, textAlign: 'right' }}>Max</span>
+      </div>
+      {runs.map((r, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'grid', gridTemplateColumns: '40px 1fr 1fr 1fr 1fr',
+            padding: '5px 12px', gap: 8,
+            borderBottom: i < runs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+          }}
+        >
+          <span style={{ ...CELL, color: '#9ca3af' }}>{i + 1}</span>
+          <span style={{ ...CELL, textAlign: 'right' }}>{fmtMs(r.totalMountMs)}</span>
+          <span style={{ ...CELL, textAlign: 'right', color: fpsBand(r.finalFps), fontWeight: 600 }}>{fmt1(r.finalFps)}</span>
+          <span style={{ ...CELL, textAlign: 'right', color: frameBand(r.finalP95Ms) }}>{fmt1(r.finalP95Ms)} ms</span>
+          <span style={{ ...CELL, textAlign: 'right', color: frameBand(r.finalMaxMs) }}>{fmt1(r.finalMaxMs)} ms</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -112,6 +165,9 @@ export function ShotReport({ result, onClose }: Props) {
     e.preventDefault();
   };
 
+  const a = result.aggregates;
+  const lastRun = result.runs[result.runs.length - 1];
+
   return (
     <div
       style={{
@@ -128,8 +184,8 @@ export function ShotReport({ result, onClose }: Props) {
           background: '#0f0f1e',
           border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: 12,
-          width: 540,
-          maxWidth: '90vw',
+          width: 580,
+          maxWidth: '92vw',
           maxHeight: '90vh',
           display: 'flex',
           flexDirection: 'column',
@@ -152,7 +208,9 @@ export function ShotReport({ result, onClose }: Props) {
           }}
         >
           <div>
-            <div style={{ color: '#e5e7eb', fontSize: 17, fontWeight: 700 }}>Benchmark Report</div>
+            <div style={{ color: '#e5e7eb', fontSize: 17, fontWeight: 700 }}>
+              Benchmark Report — {result.runCount} runs
+            </div>
             <div style={{ color: '#6b7280', fontSize: 12, marginTop: 3 }}>{result.capturedAt}</div>
           </div>
           <button
@@ -169,7 +227,6 @@ export function ShotReport({ result, onClose }: Props) {
 
         {/* Scrollable content */}
         <div style={{ overflowY: 'auto', padding: '20px 24px', flex: 1, minHeight: 0 }}>
-          {/* Scene summary */}
           <Section title="Scene">
             <Row label="Stacks rendered" value={String(result.stackCount)} />
             <Row label="Layers per stack" value={String(result.palletLayers)} />
@@ -177,60 +234,81 @@ export function ShotReport({ result, onClose }: Props) {
             <Row label="Total boxes" value={String(result.totalBoxes)} />
           </Section>
 
-          {/* Mount timing */}
-          <Section title="Mount timing">
-            <Row label="Total (first → last stable)" value={fmtMs(result.totalMountMs)} />
-            <div style={{ marginTop: 10 }}>
-              <div style={{ color: '#9ca3af', fontSize: 12, marginBottom: 6 }}>Per-stack (sorted by mount order)</div>
-              <div style={{
-                background: 'rgba(255,255,255,0.03)', borderRadius: 6, overflow: 'hidden',
-                border: '1px solid rgba(255,255,255,0.07)',
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                  <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600 }}>Stack</span>
-                  <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Mount time</span>
-                  <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Peak frame</span>
-                </div>
-                {result.stackMounts.map((m, i) => (
-                  <div
-                    key={m.sceneId}
-                    style={{
-                      display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-                      padding: '5px 12px',
-                      borderBottom: i < result.stackMounts.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                    }}
-                  >
-                    <span style={{ color: '#9ca3af', fontSize: 13 }}>#{m.sceneId}</span>
-                    <span style={{ color: '#e5e7eb', fontSize: 13, fontWeight: 600, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{fmtMs(m.mountMs)}</span>
-                    <span style={{
-                      fontSize: 13, fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-                      color: m.peakFrameMs <= 20 ? '#4ade80' : m.peakFrameMs <= 33 ? '#fbbf24' : '#f87171',
-                    }}>{fmt1(m.peakFrameMs)} ms</span>
-                  </div>
-                ))}
-              </div>
+          <Section title="Mount timing (mean ± stddev)">
+            <Row label="Total (first → last stable)" value={meanStddev(a.totalMountMs, fmtMs, '')} />
+          </Section>
+
+          <Section title="FPS (mean ± stddev)">
+            <Row
+              label="Before unmount (baseline)"
+              value={meanStddev(a.baselineFps, fmt1, ' fps')}
+              valueColor={fpsBand(a.baselineFps.mean)}
+            />
+            <Row
+              label="Avg while mounting"
+              value={meanStddev(a.avgFpsDuring, fmt1, ' fps')}
+              valueColor={fpsBand(a.avgFpsDuring.mean)}
+            />
+            <Row
+              label="After all mounted (settled)"
+              value={meanStddev(a.finalFps, fmt1, ' fps')}
+              valueColor={fpsBand(a.finalFps.mean)}
+            />
+          </Section>
+
+          <Section title="Frame time during settle (lower = smoother)">
+            <Row label="p50 (median)" value={meanStddev(a.finalP50Ms, fmt1, ' ms')} valueColor={frameBand(a.finalP50Ms.mean)} />
+            <Row label="p95" value={meanStddev(a.finalP95Ms, fmt1, ' ms')} valueColor={frameBand(a.finalP95Ms.mean)} />
+            <Row label="p99" value={meanStddev(a.finalP99Ms, fmt1, ' ms')} valueColor={frameBand(a.finalP99Ms.mean)} />
+            <Row label="Max" value={meanStddev(a.finalMaxMs, fmt1, ' ms')} valueColor={frameBand(a.finalMaxMs.mean)} />
+            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 6 }}>
+              Sampled via rAF during the {(lastRun.settleMs / 1000).toFixed(0)} s settle window after each run finished mounting.
+              Last run: {lastRun.finalSampleCount} frames.
             </div>
           </Section>
 
-          {/* FPS */}
-          <Section title="FPS">
-            <Row label="Before unmount (baseline)" value={`${fmt1(result.baselineFps)} fps`} valueColor={band(result.baselineFps)} />
-            <Row label="Avg while mounting" value={`${fmt1(result.avgFpsDuring)} fps`} valueColor={band(result.avgFpsDuring)} />
-            <Row label={`After all mounted (+${result.settleMs / 1000} s settle)`} value={`${fmt1(result.finalFps)} fps`} valueColor={band(result.finalFps)} />
+          <Section title="Per-run breakdown">
+            <PerRunTable runs={result.runs} />
           </Section>
 
-          {/* Memory */}
-          <Section title="JS Heap">
-            <Row label="Before" value={`${fmt1(result.baselineHeapMb)} MB`} />
-            <Row label="After" value={`${fmt1(result.finalHeapMb)} MB`} />
-            <Row
-              label="Delta"
-              value={`${fmtSign(result.heapDeltaMb)} MB`}
-              valueColor={result.heapDeltaMb > 50 ? '#f87171' : result.heapDeltaMb > 20 ? '#fbbf24' : '#4ade80'}
+          <Section title="JS Heap (mean ± stddev)">
+            <Row label="Δ per cycle" value={`${fmtSign(a.heapDeltaMb.mean)} ± ${fmt2(a.heapDeltaMb.stddev)} MB`}
+              valueColor={a.heapDeltaMb.mean > 50 ? '#f87171' : a.heapDeltaMb.mean > 20 ? '#fbbf24' : '#4ade80'}
             />
-            {result.baselineHeapMb === 0 && (
+            <Row label="Last run (after)" value={`${fmt1(lastRun.finalHeapMb)} MB`} />
+            {lastRun.baselineHeapMb === 0 && (
               <div style={{ color: '#6b7280', fontSize: 11, marginTop: 4 }}>performance.memory not available (non-Chromium browser)</div>
             )}
+          </Section>
+
+          <Section title="Last run — per-stack mounts">
+            <div style={{
+              background: 'rgba(255,255,255,0.03)', borderRadius: 6, overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.07)',
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600 }}>Stack</span>
+                <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Mount time</span>
+                <span style={{ color: '#6b7280', fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Peak frame</span>
+              </div>
+              {lastRun.stackMounts.map((m, i) => (
+                <div
+                  key={m.sceneId}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                    padding: '5px 12px',
+                    borderBottom: i < lastRun.stackMounts.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  }}
+                >
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>#{m.sceneId}</span>
+                  <span style={{ color: '#e5e7eb', fontSize: 13, fontWeight: 600, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{fmtMs(m.mountMs)}</span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                    color: frameBand(m.peakFrameMs),
+                  }}>{fmt1(m.peakFrameMs)} ms</span>
+                </div>
+              ))}
+            </div>
           </Section>
         </div>
 

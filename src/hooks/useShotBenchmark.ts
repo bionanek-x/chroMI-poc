@@ -25,9 +25,45 @@ export interface ShotResult {
   finalFps: number;
   finalHeapMb: number;
   heapDeltaMb: number;
-  totalMountMs: number; // time from shot start to last stack stable
-  settleMs: number;     // delay waited after last stack mounted before sampling finalFps
+  totalMountMs: number;       // time from shot start to last stack stable
+  settleMs: number;           // delay waited after last stack mounted before sampling finalFps
+  // Steady-state frame-time distribution sampled via rAF during the settle window.
+  // Captures user-perceived smoothness: low p95/max means consistent frames; a high
+  // max with a low p95 means rare hiccups.
+  finalP50Ms: number;
+  finalP95Ms: number;
+  finalP99Ms: number;
+  finalMaxMs: number;
+  finalSampleCount: number;
   stackMounts: StackMountRecord[];
+}
+
+export interface AggregateStat {
+  mean: number;
+  stddev: number;
+  min: number;
+  max: number;
+}
+
+export interface MultiShotResult {
+  capturedAt: string;
+  runCount: number;
+  stackCount: number;
+  palletLayers: number;
+  boxesPerStack: number;
+  totalBoxes: number;
+  runs: ShotResult[];
+  aggregates: {
+    baselineFps: AggregateStat;
+    avgFpsDuring: AggregateStat;
+    finalFps: AggregateStat;
+    totalMountMs: AggregateStat;
+    finalP50Ms: AggregateStat;
+    finalP95Ms: AggregateStat;
+    finalP99Ms: AggregateStat;
+    finalMaxMs: AggregateStat;
+    heapDeltaMb: AggregateStat;
+  };
 }
 
 // How long to wait after the last stack mounts before sampling finalFps.
@@ -59,6 +95,12 @@ export function notifyStackMounted(sceneId: string, peakFrameMs: number) {
   mountRecords.set(sceneId, { mountMs: Date.now() - shotStartMs, peakFrameMs });
 
   if (mountRecords.size >= expectedCount) _finalize();
+}
+
+function percentile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * q));
+  return sorted[idx];
 }
 
 function _finalize() {
@@ -97,17 +139,41 @@ function _finalize() {
     stackMounts,
   };
 
-  // Wait for the renderer to reach steady-state before sampling finalFps.
-  setTimeout(() => {
-    const finalFps = getAggregatedFps() ?? 0;
-    const finalHeapMb = jsHeapMb();
-    onComplete?.({
-      ...partial,
-      finalFps,
-      finalHeapMb,
-      heapDeltaMb: finalHeapMb - baselineHeapMb,
-    });
-  }, SETTLE_MS);
+  // Sample inter-frame times during the settle window via rAF. The first frame
+  // is dropped (its delta reflects scheduling latency, not steady-state render).
+  const frameSamples: number[] = [];
+  const settleStart = performance.now();
+  let lastT = 0;
+  let firstFrame = true;
+
+  const tick = (now: number) => {
+    if (firstFrame) {
+      lastT = now;
+      firstFrame = false;
+    } else {
+      frameSamples.push(now - lastT);
+      lastT = now;
+    }
+    if (now - settleStart < SETTLE_MS) {
+      requestAnimationFrame(tick);
+    } else {
+      const sorted = [...frameSamples].sort((a, b) => a - b);
+      const finalFps = getAggregatedFps() ?? 0;
+      const finalHeapMb = jsHeapMb();
+      onComplete?.({
+        ...partial,
+        finalFps,
+        finalHeapMb,
+        heapDeltaMb: finalHeapMb - baselineHeapMb,
+        finalP50Ms: percentile(sorted, 0.50),
+        finalP95Ms: percentile(sorted, 0.95),
+        finalP99Ms: percentile(sorted, 0.99),
+        finalMaxMs: sorted[sorted.length - 1] ?? 0,
+        finalSampleCount: frameSamples.length,
+      });
+    }
+  };
+  requestAnimationFrame(tick);
 }
 
 export function startShot(stackIds: string[], callback: (r: ShotResult) => void) {
@@ -132,4 +198,40 @@ export function startShot(stackIds: string[], callback: (r: ShotResult) => void)
     const fps = getAggregatedFps();
     if (fps !== null) fpsSamples.push(fps);
   }, 100);
+}
+
+function stat(values: number[]): AggregateStat {
+  if (values.length === 0) return { mean: 0, stddev: 0, min: 0, max: 0 };
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return {
+    mean,
+    stddev: Math.sqrt(variance),
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+export function aggregateRuns(runs: ShotResult[]): MultiShotResult {
+  const first = runs[0];
+  return {
+    capturedAt: new Date().toISOString(),
+    runCount: runs.length,
+    stackCount: first.stackCount,
+    palletLayers: first.palletLayers,
+    boxesPerStack: first.boxesPerStack,
+    totalBoxes: first.totalBoxes,
+    runs,
+    aggregates: {
+      baselineFps: stat(runs.map((r) => r.baselineFps)),
+      avgFpsDuring: stat(runs.map((r) => r.avgFpsDuring)),
+      finalFps: stat(runs.map((r) => r.finalFps)),
+      totalMountMs: stat(runs.map((r) => r.totalMountMs)),
+      finalP50Ms: stat(runs.map((r) => r.finalP50Ms)),
+      finalP95Ms: stat(runs.map((r) => r.finalP95Ms)),
+      finalP99Ms: stat(runs.map((r) => r.finalP99Ms)),
+      finalMaxMs: stat(runs.map((r) => r.finalMaxMs)),
+      heapDeltaMb: stat(runs.map((r) => r.heapDeltaMb)),
+    },
+  };
 }
