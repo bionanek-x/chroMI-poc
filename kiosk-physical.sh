@@ -16,12 +16,12 @@ PROFILE_DIR="/tmp/hmi-poc-chrome-profile"
 # Locate the browser binary
 CHROMIUM_BIN=""
 for candidate in \
-    chromium-browser \
     chromium \
+    chromium-browser \
     google-chrome \
     google-chrome-stable \
-    /usr/bin/chromium-browser \
     /usr/bin/chromium \
+    /usr/bin/chromium-browser \
     /usr/bin/google-chrome \
     /usr/bin/google-chrome-stable; do
   if command -v "$candidate" &>/dev/null || [[ -x "$candidate" ]]; then
