@@ -50,6 +50,12 @@ fi
 
 echo "Launching $CHROMIUM_BIN → $URL"
 
+# --no-sandbox is required when running as root
+ROOT_FLAG=""
+if [[ "$EUID" -eq 0 ]]; then
+  ROOT_FLAG="--no-sandbox"
+fi
+
 DISPLAY="$DISPLAY_NUM" "$CHROMIUM_BIN" \
   --kiosk \
   --incognito \
@@ -70,4 +76,5 @@ DISPLAY="$DISPLAY_NUM" "$CHROMIUM_BIN" \
   --overscroll-history-navigation=0 \
   --touch-events=enabled \
   --user-data-dir="$PROFILE_DIR" \
+  $ROOT_FLAG \
   "$URL"
