@@ -124,6 +124,24 @@ DISPLAY=:0 ./kiosk-physical.sh
 ./kiosk-physical.sh  # then add --ozone-platform=wayland to the script if needed
 ```
 
+### 5. Running as root
+
+If you are logged in as `root` (e.g. the project is in a root-owned directory), Chromium will refuse to launch unless `--no-sandbox` is passed — the kiosk scripts handle this automatically. However, root also lacks permission to connect to the X display server started by another user. Fix this by running the following command **once per session as the non-root user who owns the X session**:
+
+```bash
+xhost +local:root
+```
+
+Then launch the kiosk normally, passing the correct display if it differs from `:0`:
+
+```bash
+DISPLAY=:2 pnpm kiosk:physical   # replace :2 with your actual $DISPLAY value
+# or via script args:
+./kiosk-physical.sh http://localhost:8080 :2
+```
+
+Without `xhost +local:root` you will see: `Authorization required, but no authorization protocol specified` followed by a missing `$DISPLAY` error, even if `DISPLAY` is correctly set.
+
 ## Debug / instrumentation
 
 Append query params to the URL:
